@@ -105,6 +105,10 @@ class HdfBaseHandler(APIHandler):
         self.notebook_dir = notebook_dir
         self.manager = self.managerClass(log=self.log, notebook_dir=notebook_dir)
 
+    @property
+    def allow_origin(self):
+        return "*"
+
     @web.authenticated
     async def get(self, path):
         """Based on an api request, get either the contents of a group or a
