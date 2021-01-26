@@ -292,3 +292,10 @@ def uriJoin(*parts):
 
 def uriName(uri):
     return uri.split('/')[-1]
+
+## External link that can be parsed by hobjDict methods
+class HobjExternalLink:
+    def __init__(self, link, name) -> None:
+        self.name = name
+        self.original_link = link
+        self.attrs = []

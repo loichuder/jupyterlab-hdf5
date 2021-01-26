@@ -3,6 +3,7 @@
 # Copyright (c) Jupyter Development Team.
 # Distributed under the terms of the Modified BSD License.
 
+from jupyterlab_hdf.util import HobjExternalLink
 import h5py
 import os
 import simplejson
@@ -21,8 +22,8 @@ __all__ = ['HdfBaseManager', 'HdfFileManager', 'HdfBaseHandler']
 
 ## manager
 class HdfBaseManager:
-    """Base class for implementing HDF5 handling
-    """
+    """Base class for implementing HDF5 handling"""
+
     def __init__(self, log, notebook_dir):
         self.log = log
         self.notebook_dir = notebook_dir
@@ -32,21 +33,22 @@ class HdfBaseManager:
 
     def get(self, relfpath, uri, **kwargs):
         def _handleErr(code, msg):
-            extra = dict((
-                ('relfpath', relfpath),
-                ('uri', uri),
-                *kwargs.items(),
-            ))
+            extra = dict(
+                (
+                    ('relfpath', relfpath),
+                    ('uri', uri),
+                    *kwargs.items(),
+                )
+            )
 
             if isinstance(msg, dict):
                 # encode msg as json
                 msg['debugVars'] = {**msg.get('debugVars', {}), **extra}
                 msg = simplejson.dumps(msg, ignore_nan=True)
             else:
-                msg = '\n'.join((
-                    msg,
-                    ', '.join(f'{key}: {val}' for key,val in extra.items())
-                ))
+                msg = '\n'.join(
+                    (msg, ', '.join(f'{key}: {val}' for key, val in extra.items()))
+                )
 
             self.log.error(msg)
             raise HTTPError(code, msg)
@@ -63,10 +65,13 @@ class HdfBaseManager:
         else:
             try:
                 # test opening the file with h5py
-                with h5py.File(fpath, 'r') as f: pass
+                with h5py.File(fpath, 'r') as f:
+                    pass
             except Exception as e:
-                msg = (f'The request did not specify a file that `h5py` could understand.\n'
-                       f'Error: {traceback.format_exc()}')
+                msg = (
+                    f'The request did not specify a file that `h5py` could understand.\n'
+                    f'Error: {traceback.format_exc()}'
+                )
                 _handleErr(401, msg)
             try:
                 out = self._get(fpath, uri, **kwargs)
@@ -76,21 +81,36 @@ class HdfBaseManager:
                 msg['type'] = 'JhdfError'
                 _handleErr(400, msg)
             except Exception as e:
-                msg = (f'Found and opened file, error getting contents from object specified by the uri.\n'
-                       f'Error: {traceback.format_exc()}')
+                msg = (
+                    f'Found and opened file, error getting contents from object specified by the uri.\n'
+                    f'Error: {traceback.format_exc()}'
+                )
                 _handleErr(500, msg)
 
             return out
 
+
 class HdfFileManager(HdfBaseManager):
-    """Implements base HDF5 file handling
-    """
+    """Implements base HDF5 file handling"""
+
     def _get(self, fpath, uri, **kwargs):
         with h5py.File(fpath, 'r') as f:
             return self._getFromFile(f, uri, **kwargs)
 
     def _getFromFile(self, f, uri, **kwargs):
+        if uri == '/':
+            # Root is always resolvable
+            return self._getFromFile(f[uri], **kwargs)
+
+        link = f.get(uri, getlink=True)
+        if isinstance(link, h5py.ExternalLink):
+            return self._getResponse(HobjExternalLink(name=uri, link=link), **kwargs)
+
+        return self._getResponse(f[uri], **kwargs)
+
+    def _getResponse(self, hobj, **kwargs):
         raise NotImplementedError
+
 
 ## handler
 class HdfBaseHandler(APIHandler):
@@ -98,6 +118,7 @@ class HdfBaseHandler(APIHandler):
 
     """Base class for HDF5 api handlers
     """
+
     def initialize(self, notebook_dir):
         if self.managerClass is None:
             raise NotImplementedError
@@ -119,22 +140,21 @@ class HdfBaseHandler(APIHandler):
         # get any query parameter vals
         _kws = ('min_ndim', 'ixstr', 'subixstr')
         _vals = (self.get_query_argument(kw, default=None) for kw in _kws)
-        kwargs = {k:v if v else None for k,v in zip(_kws, _vals)}
+        kwargs = {k: v if v else None for k, v in zip(_kws, _vals)}
 
         # do any needed type conversions of param vals
-        _num_kws = ('min_ndim', )
+        _num_kws = ('min_ndim',)
         for k in (k for k in _num_kws if kwargs[k] is not None):
             kwargs[k] = int(kwargs[k])
 
         try:
-            self.finish(simplejson.dumps(self.manager.get(path, uri, **kwargs), ignore_nan=True))
+            self.finish(
+                simplejson.dumps(self.manager.get(path, uri, **kwargs), ignore_nan=True)
+            )
         except HTTPError as err:
             self.set_status(err.code)
             response = err.response.body if err.response else str(err.code)
-            self.finish('\n'.join((
-                response,
-                err.message
-            )))
+            self.finish('\n'.join((response, err.message)))
 
     # def getQueryArguments(self, key, func=None):
     #     if func is not None:
