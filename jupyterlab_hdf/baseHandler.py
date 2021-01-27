@@ -95,18 +95,19 @@ class HdfFileManager(HdfBaseManager):
 
     def _get(self, fpath, uri, **kwargs):
         with h5py.File(fpath, 'r') as f:
-            return self._getFromFile(f, uri, **kwargs)
+            hobj = self._getHobjFromFile(f, uri)
+            return self._getResponse(hobj, **kwargs)
 
-    def _getFromFile(self, f, uri, **kwargs):
+    def _getHobjFromFile(self, f, uri):
         if uri == '/':
             # Root is always resolvable
-            return self._getFromFile(f[uri], **kwargs)
+            return f[uri]
 
         link = f.get(uri, getlink=True)
         if isinstance(link, h5py.ExternalLink):
-            return self._getResponse(HobjExternalLink(name=uri, link=link), **kwargs)
+            return HobjExternalLink(name=uri, link=link)
 
-        return self._getResponse(f[uri], **kwargs)
+        return f[uri]
 
     def _getResponse(self, hobj, **kwargs):
         raise NotImplementedError

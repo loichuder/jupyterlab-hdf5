@@ -92,6 +92,12 @@ def hobjMetaDict(hobj, ixstr=None, min_ndim=None):
             *d.items(),
             ('childrenCount', len(hobj))
         )))
+    elif d['type'] == 'link':
+        return dict(sorted((
+            *d.items(),
+            ('externalFile', hobj.original_link.filename),
+            ('externalUri', hobj.original_link.path),
+        )))
     else:
         return d
 
@@ -100,6 +106,8 @@ def hobjType(hobj):
         return 'dataset'
     elif isinstance(hobj, h5py.Group):
         return 'group'
+    elif isinstance(hobj, HobjExternalLink):
+        return 'link'
     else:
         return 'other'
 

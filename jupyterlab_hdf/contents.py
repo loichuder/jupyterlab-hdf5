@@ -21,7 +21,7 @@ class HdfContentsManager(HdfFileManager):
             return [
                 jsonize(
                     hobjContentsDict(
-                        hobj.get(child_name, getlink=True),
+                        self._getHobjFromFile(hobj.file, uriJoin(hobj.name, child_name)),
                         content=False,
                         ixstr=ixstr,
                         min_ndim=min_ndim,
