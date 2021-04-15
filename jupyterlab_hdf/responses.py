@@ -12,7 +12,7 @@ from .util import attrMetaDict, dsetChunk, shapemeta, uriJoin, uriName
 class EntityResponse:
     type = "other"
 
-    def __init__(self, uri):
+    def __init__(self, uri: str):
         self._uri = uri
 
     def contents(self, content=False, ixstr=None, min_ndim=None):
@@ -37,7 +37,7 @@ class EntityResponse:
 class ExternalLinkResponse(EntityResponse):
     type = "externalLink"
 
-    def __init__(self, uri, link) -> None:
+    def __init__(self, uri: str, link: h5py.ExternalLink) -> None:
         super().__init__(uri)
         self._target_file = link.filename
         self._target_uri = link.path
@@ -55,7 +55,7 @@ class ExternalLinkResponse(EntityResponse):
 
 
 class ResolvedEntityResponse(EntityResponse):
-    def __init__(self, uri, hobj):
+    def __init__(self, uri: str, hobj: h5py.HLObject):
         super().__init__(uri)
         self._hobj = hobj
 
@@ -95,13 +95,17 @@ class DatasetResponse(ResolvedEntityResponse):
 class GroupResponse(ResolvedEntityResponse):
     type = "group"
 
+    def __init__(self, uri: str, hobj: h5py.Group, h5file: h5py.File):
+        super().__init__(uri, hobj)
+        self._h5file = h5file
+
     def contents(self, content=False, ixstr=None, min_ndim=None):
         if not content:
             return super().contents(ixstr=ixstr, min_ndim=min_ndim)
 
         # Recurse one level
         return [
-            create_response(self._hobj.file, uriJoin(self._uri, suburi)).contents(
+            create_response(self._h5file, uriJoin(self._uri, suburi)).contents(
                 content=False,
                 ixstr=ixstr,
                 min_ndim=min_ndim,
@@ -123,7 +127,7 @@ def create_response(h5file: h5py.File, uri: str):
     if isinstance(hobj, h5py.Dataset):
         return DatasetResponse(uri, hobj)
     elif isinstance(hobj, h5py.Group):
-        return GroupResponse(uri, hobj)
+        return GroupResponse(uri, hobj, h5file)
     else:
         return ResolvedEntityResponse(uri, hobj)
 
@@ -134,6 +138,9 @@ def resolve_hobj(h5file: h5py.File, uri: str):
 
     link = h5file.get(uri, getlink=True)
     if isinstance(link, h5py.ExternalLink):
-        return link
+        try:
+            return h5file[uri]
+        except (OSError, KeyError):
+            return link
 
     return h5file[uri]
