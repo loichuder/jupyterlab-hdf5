@@ -1,4 +1,4 @@
-from typing import Union
+from typing import Generic, Sequence, TypeVar, Union
 import h5py
 
 try:
@@ -14,7 +14,7 @@ class EntityResponse:
     def __init__(self, uri: str):
         self._uri = uri
 
-    def contents(self, content=False, ixstr=None, min_ndim=None):
+    def contents(self, content: bool = False, ixstr=None, min_ndim: Union[int, None] = None):
         return dict(
             (
                 # ensure that 'content' is undefined if not explicitly requested
@@ -71,12 +71,15 @@ class SoftLinkResponse(EntityResponse):
         )
 
 
-class ResolvedEntityResponse(EntityResponse):
-    def __init__(self, uri: str, hobj: h5py.HLObject):
+T = TypeVar("T", h5py.Dataset, h5py.Datatype, h5py.Group)
+
+
+class ResolvedEntityResponse(EntityResponse, Generic[T]):
+    def __init__(self, uri: str, hobj: T):
         super().__init__(uri)
         self._hobj = hobj
 
-    def attributes(self, attr_keys=None):
+    def attributes(self, attr_keys: Sequence[str] = None):
         if attr_keys is None:
             return dict((*self._hobj.attrs.items(),))
 
@@ -87,10 +90,10 @@ class ResolvedEntityResponse(EntityResponse):
         return dict((*super().metadata().items(), ("attributes", [attrMetaDict(self._hobj.attrs.get_id(k)) for k in attribute_names])))
 
 
-class DatasetResponse(ResolvedEntityResponse):
+class DatasetResponse(ResolvedEntityResponse[h5py.Dataset]):
     type = "dataset"
 
-    def metadata(self, ixstr=None, min_ndim=None):
+    def metadata(self, ixstr=None, min_ndim: Union[int, None] = None):
         d = super().metadata()
         shapekeys = ("labels", "ndim", "shape", "size")
         smeta = {k: v for k, v in shapemeta(self._hobj.shape, self._hobj.size, ixstr=ixstr, min_ndim=min_ndim).items() if k in shapekeys}
@@ -105,18 +108,18 @@ class DatasetResponse(ResolvedEntityResponse):
             )
         )
 
-    def data(self, ixstr=None, subixstr=None, min_ndim=None):
+    def data(self, ixstr=None, subixstr=None, min_ndim: Union[int, None] = None):
         return dsetChunk(self._hobj, ixstr=ixstr, subixstr=subixstr, min_ndim=min_ndim)
 
 
-class GroupResponse(ResolvedEntityResponse):
+class GroupResponse(ResolvedEntityResponse[h5py.Group]):
     type = "group"
 
     def __init__(self, uri: str, hobj: h5py.Group, h5file: h5py.File):
         super().__init__(uri, hobj)
         self._h5file = h5file
 
-    def contents(self, content=False, ixstr=None, min_ndim=None):
+    def contents(self, content: bool = False, ixstr=None, min_ndim: Union[int, None] = None):
         if not content:
             return super().contents(ixstr=ixstr, min_ndim=min_ndim)
 
