@@ -1,6 +1,5 @@
-from typing import Union
+from typing import Generic, Sequence, TypeVar, Union
 import h5py
-from h5py._hl.group import ExternalLink
 
 try:
     import hdf5plugin  # noqa: F401
@@ -12,10 +11,10 @@ from .util import attrMetaDict, dsetChunk, shapemeta, uriJoin, uriName
 class EntityResponse:
     type = "other"
 
-    def __init__(self, uri):
+    def __init__(self, uri: str):
         self._uri = uri
 
-    def contents(self, content=False, ixstr=None, min_ndim=None):
+    def contents(self, content: bool = False, ixstr=None, min_ndim: Union[int, None] = None):
         return dict(
             (
                 # ensure that 'content' is undefined if not explicitly requested
@@ -37,7 +36,7 @@ class EntityResponse:
 class ExternalLinkResponse(EntityResponse):
     type = "externalLink"
 
-    def __init__(self, uri, link) -> None:
+    def __init__(self, uri: str, link: h5py.ExternalLink) -> None:
         super().__init__(uri)
         self._target_file = link.filename
         self._target_uri = link.path
@@ -54,12 +53,33 @@ class ExternalLinkResponse(EntityResponse):
         )
 
 
-class ResolvedEntityResponse(EntityResponse):
-    def __init__(self, uri, hobj):
+class SoftLinkResponse(EntityResponse):
+    type = "softLink"
+
+    def __init__(self, uri: str, link: h5py.SoftLink) -> None:
+        super().__init__(uri)
+        self._target_uri = link.path
+
+    def metadata(self, **kwargs):
+        return dict(
+            sorted(
+                (
+                    *super().metadata().items(),
+                    ("targetUri", self._target_uri),
+                )
+            )
+        )
+
+
+T = TypeVar("T", h5py.Dataset, h5py.Datatype, h5py.Group)
+
+
+class ResolvedEntityResponse(EntityResponse, Generic[T]):
+    def __init__(self, uri: str, hobj: T):
         super().__init__(uri)
         self._hobj = hobj
 
-    def attributes(self, attr_keys=None):
+    def attributes(self, attr_keys: Sequence[str] = None):
         if attr_keys is None:
             return dict((*self._hobj.attrs.items(),))
 
@@ -70,10 +90,10 @@ class ResolvedEntityResponse(EntityResponse):
         return dict((*super().metadata().items(), ("attributes", [attrMetaDict(self._hobj.attrs.get_id(k)) for k in attribute_names])))
 
 
-class DatasetResponse(ResolvedEntityResponse):
+class DatasetResponse(ResolvedEntityResponse[h5py.Dataset]):
     type = "dataset"
 
-    def metadata(self, ixstr=None, min_ndim=None):
+    def metadata(self, ixstr=None, min_ndim: Union[int, None] = None):
         d = super().metadata()
         shapekeys = ("labels", "ndim", "shape", "size")
         smeta = {k: v for k, v in shapemeta(self._hobj.shape, self._hobj.size, ixstr=ixstr, min_ndim=min_ndim).items() if k in shapekeys}
@@ -88,20 +108,24 @@ class DatasetResponse(ResolvedEntityResponse):
             )
         )
 
-    def data(self, ixstr=None, subixstr=None, min_ndim=None):
+    def data(self, ixstr=None, subixstr=None, min_ndim: Union[int, None] = None):
         return dsetChunk(self._hobj, ixstr=ixstr, subixstr=subixstr, min_ndim=min_ndim)
 
 
-class GroupResponse(ResolvedEntityResponse):
+class GroupResponse(ResolvedEntityResponse[h5py.Group]):
     type = "group"
 
-    def contents(self, content=False, ixstr=None, min_ndim=None):
+    def __init__(self, uri: str, hobj: h5py.Group, h5file: h5py.File):
+        super().__init__(uri, hobj)
+        self._h5file = h5file
+
+    def contents(self, content: bool = False, ixstr=None, min_ndim: Union[int, None] = None):
         if not content:
             return super().contents(ixstr=ixstr, min_ndim=min_ndim)
 
         # Recurse one level
         return [
-            create_response(self._hobj.file, uriJoin(self._uri, suburi)).contents(
+            create_response(self._h5file, uriJoin(self._uri, suburi)).contents(
                 content=False,
                 ixstr=ixstr,
                 min_ndim=min_ndim,
@@ -120,20 +144,28 @@ def create_response(h5file: h5py.File, uri: str):
 
     if isinstance(hobj, h5py.ExternalLink):
         return ExternalLinkResponse(uri, hobj)
+
+    if isinstance(hobj, h5py.SoftLink):
+        return SoftLinkResponse(uri, hobj)
+
     if isinstance(hobj, h5py.Dataset):
         return DatasetResponse(uri, hobj)
-    elif isinstance(hobj, h5py.Group):
-        return GroupResponse(uri, hobj)
-    else:
-        return ResolvedEntityResponse(uri, hobj)
+
+    if isinstance(hobj, h5py.Group):
+        return GroupResponse(uri, hobj, h5file)
+
+    return ResolvedEntityResponse(uri, hobj)
 
 
-def resolve_hobj(h5file: h5py.File, uri: str):
+def resolve_hobj(h5file: h5py.File, uri: str) -> Union[h5py.Dataset, h5py.Datatype, h5py.ExternalLink, h5py.Group, h5py.SoftLink]:
     if uri == "/":
         return h5file[uri]
 
     link = h5file.get(uri, getlink=True)
-    if isinstance(link, h5py.ExternalLink):
-        return link
+    if isinstance(link, h5py.ExternalLink) or isinstance(link, h5py.SoftLink):
+        try:
+            return h5file[uri]
+        except (OSError, KeyError):
+            return link
 
     return h5file[uri]
