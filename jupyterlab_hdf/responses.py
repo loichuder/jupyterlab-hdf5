@@ -1,6 +1,5 @@
 from typing import Union
 import h5py
-from h5py._hl.group import ExternalLink
 
 try:
     import hdf5plugin  # noqa: F401
@@ -48,6 +47,24 @@ class ExternalLinkResponse(EntityResponse):
                 (
                     *super().metadata().items(),
                     ("targetFile", self._target_file),
+                    ("targetUri", self._target_uri),
+                )
+            )
+        )
+
+
+class SoftLinkResponse(EntityResponse):
+    type = "softLink"
+
+    def __init__(self, uri: str, link: h5py.SoftLink) -> None:
+        super().__init__(uri)
+        self._target_uri = link.path
+
+    def metadata(self, **kwargs):
+        return dict(
+            sorted(
+                (
+                    *super().metadata().items(),
                     ("targetUri", self._target_uri),
                 )
             )
@@ -124,20 +141,25 @@ def create_response(h5file: h5py.File, uri: str):
 
     if isinstance(hobj, h5py.ExternalLink):
         return ExternalLinkResponse(uri, hobj)
+
+    if isinstance(hobj, h5py.SoftLink):
+        return SoftLinkResponse(uri, hobj)
+
     if isinstance(hobj, h5py.Dataset):
         return DatasetResponse(uri, hobj)
-    elif isinstance(hobj, h5py.Group):
+
+    if isinstance(hobj, h5py.Group):
         return GroupResponse(uri, hobj, h5file)
-    else:
-        return ResolvedEntityResponse(uri, hobj)
+
+    return ResolvedEntityResponse(uri, hobj)
 
 
-def resolve_hobj(h5file: h5py.File, uri: str):
+def resolve_hobj(h5file: h5py.File, uri: str) -> Union[h5py.Dataset, h5py.Datatype, h5py.ExternalLink, h5py.Group, h5py.SoftLink]:
     if uri == "/":
         return h5file[uri]
 
     link = h5file.get(uri, getlink=True)
-    if isinstance(link, h5py.ExternalLink):
+    if isinstance(link, h5py.ExternalLink) or isinstance(link, h5py.SoftLink):
         try:
             return h5file[uri]
         except (OSError, KeyError):
