@@ -13,7 +13,7 @@ from notebook.base.handlers import APIHandler
 from notebook.utils import url_path_join
 
 # from .config import HdfConfig
-from .exception import JhdfError
+from .exception import JhdfError, JhdfPathNotFoundError
 from .responses import create_response
 from .util import jsonize
 
@@ -70,6 +70,11 @@ class HdfBaseManager:
                 _handleErr(401, msg)
             try:
                 out = self._get(fpath, uri, **kwargs)
+            except JhdfPathNotFoundError as e:
+                msg = e.args[0]
+                msg["traceback"] = traceback.format_exc()
+                msg["type"] = "JhdfPathNotFoundError"
+                _handleErr(404, "")
             except JhdfError as e:
                 msg = e.args[0]
                 msg["traceback"] = traceback.format_exc()
