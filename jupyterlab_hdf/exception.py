@@ -3,7 +3,12 @@
 # Copyright (c) Jupyter Development Team.
 # Distributed under the terms of the Modified BSD License.
 
-__all__ = ['JhdfError']
+__all__ = ["JhdfError"]
+
 
 class JhdfError(Exception):
+    pass
+
+
+class JhdfPathNotFoundError(Exception):
     pass

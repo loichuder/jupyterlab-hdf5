@@ -1,6 +1,5 @@
-from typing import Union
 import h5py
-from h5py._hl.group import ExternalLink
+from .exception import JhdfPathNotFoundError
 
 try:
     import hdf5plugin  # noqa: F401
@@ -133,6 +132,16 @@ def resolve_hobj(h5file: h5py.File, uri: str):
         return h5file[uri]
 
     link = h5file.get(uri, getlink=True)
+    if link is None:
+        raise JhdfPathNotFoundError(
+            dict(
+                (
+                    ("message", "Path not found in file"),
+                    ("debugVars", {"filename": h5file.filename, "uri": uri}),
+                )
+            )
+        )
+
     if isinstance(link, h5py.ExternalLink):
         return link
 
